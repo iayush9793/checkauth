@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gmail Domain Live Monitor</title>
+    <title>Gmail Domain Live Monitor - Today's Inbox</title>
     <style>
         :root {
             --bg-color: #0b0f19;
@@ -222,7 +222,7 @@
             border-radius: 0 6px 6px 0;
             padding: 12px 16px;
             display: grid;
-            grid-template-columns: 120px 180px 1fr auto;
+            grid-template-columns: 130px 180px 1fr auto;
             gap: 12px;
             align-items: center;
             border-top: 1px solid var(--border-color);
@@ -288,7 +288,7 @@
     <header>
         <h1>
             <span class="pulse-indicator"></span>
-            Target Domain Monitor
+            Inbox Monitor (Today Only)
         </h1>
         <div class="controls">
             <span class="timer-badge">Next cycle in: <strong id="countdown">30</strong>s</span>
@@ -303,11 +303,11 @@
             <div class="card-value" id="totalAccounts">11</div>
         </div>
         <div class="card">
-            <div class="card-title">Target Domains</div>
-            <div class="card-value" id="totalDomains">17</div>
+            <div class="card-title">Filter Scope</div>
+            <div class="card-value" style="font-size: 1.1rem; color: #60a5fa;" id="currentDateLabel">Today's Inbox</div>
         </div>
         <div class="card">
-            <div class="card-title">Hits Detected</div>
+            <div class="card-title">Hits Today</div>
             <div class="card-value" id="totalDetections" style="color: var(--accent-green);">0</div>
         </div>
         <div class="card">
@@ -317,22 +317,19 @@
     </div>
 
     <div class="layout-grid">
-        <!-- Accounts Panel -->
         <div class="card">
             <div class="card-title">Accounts Status</div>
             <div class="account-list" id="accountList"></div>
         </div>
 
-        <!-- Real-Time Hits Panel -->
         <div class="card feed-container">
-            <div class="card-title">Inbound Detections Log</div>
+            <div class="card-title">Today's Inbound Matches</div>
             <div class="feed-list" id="feedList">
-                <div class="empty-placeholder" id="emptyFeed">Listening for incoming emails matching the 17 domains...</div>
+                <div class="empty-placeholder" id="emptyFeed">Listening for incoming emails from target domains received today...</div>
             </div>
         </div>
     </div>
 
-    <!-- Live Execution Logs -->
     <div class="console-logs" id="consoleLogs">
         [System] Gmail monitor ready. Initializing authentication loop...
     </div>
@@ -394,7 +391,6 @@
             ]
         };
 
-        // Cache tokens to avoid re-requesting access tokens repeatedly
         const tokenCache = {};
         const knownMessageIds = new Set();
         let totalHits = 0;
@@ -402,9 +398,26 @@
         let pollTimer = 30;
         let isPolling = false;
 
-        // Build the optimized Gmail search query
-        // "from:(atomcoref.co.in OR corefnode.co.in ...)"
-        const gmailQuery = `from:(${DOMAINS.join(" OR ")})`;
+        // Builds dynamic query ensuring:
+        // 1. in:inbox
+        // 2. after:YYYY/MM/DD (local midnight of current date)
+        // 3. from:(domain1 OR domain2 ...)
+        function getTodayInboxQuery() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const dateStr = `${year}/${month}/${day}`;
+
+            return `in:inbox after:${dateStr} from:(${DOMAINS.join(" OR ")})`;
+        }
+
+        // Returns midnight timestamp of today in local time for strict client verification
+        function getStartOfTodayTimestamp() {
+            const now = new Date();
+            now.setHours(0, 0, 0, 0);
+            return now.getTime();
+        }
 
         function log(message) {
             const logs = document.getElementById("consoleLogs");
@@ -419,10 +432,9 @@
             btn.innerText = voiceEnabled ? "🔊 Voice: Enabled" : "🔇 Voice: Muted";
         }
 
-        // Web Speech API Voice synthesis
         function speakAlert() {
             if (!voiceEnabled || !('speechSynthesis' in window)) return;
-            window.speechSynthesis.cancel(); // Stop pending utterances
+            window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance("Auth Inbox");
             utterance.rate = 1.0;
             utterance.pitch = 1.0;
@@ -430,7 +442,6 @@
             window.speechSynthesis.speak(utterance);
         }
 
-        // Render Account list
         function renderAccounts() {
             const list = document.getElementById("accountList");
             list.innerHTML = "";
@@ -449,12 +460,10 @@
             });
         }
 
-        // Get an access token using OAuth refresh token grant
         async function getAccessToken(acc) {
             const cId = acc.clientId || CONFIG.defaultClientId;
             const cSec = acc.clientSecret || CONFIG.defaultClientSecret;
 
-            // Use cached active token if valid for at least another 60 seconds
             if (tokenCache[acc.name] && tokenCache[acc.name].expiresAt > Date.now() + 60000) {
                 return tokenCache[acc.name].accessToken;
             }
@@ -483,37 +492,43 @@
             return data.access_token;
         }
 
-        // Check single Gmail account
         async function checkAccount(acc) {
             const statusEl = document.getElementById(`status-${acc.name}`);
             if (statusEl) statusEl.innerText = "Checking...";
 
             try {
                 const accessToken = await getAccessToken(acc);
-                const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(gmailQuery)}&maxResults=5`;
+                const query = getTodayInboxQuery();
+                const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=10`;
                 
                 const response = await fetch(listUrl, {
                     headers: { Authorization: `Bearer ${accessToken}` }
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Gmail API error: ${response.status}`);
+                    throw new Error(`Gmail API: ${response.status}`);
                 }
 
                 const data = await response.json();
                 const messages = data.messages || [];
                 let detectedNew = 0;
+                const startOfToday = getStartOfTodayTimestamp();
 
                 for (const msg of messages) {
                     if (!knownMessageIds.has(msg.id)) {
-                        knownMessageIds.add(msg.id);
-                        detectedNew++;
-                        await fetchMessageDetails(acc, msg.id, accessToken);
+                        // Fetch details and strictly ensure:
+                        // 1. INBOX label is present
+                        // 2. internalDate is today (timestamp >= startOfToday)
+                        const isMatch = await verifyAndRecordMessage(acc, msg.id, accessToken, startOfToday);
+                        if (isMatch) {
+                            knownMessageIds.add(msg.id);
+                            detectedNew++;
+                        }
                     }
                 }
 
                 if (statusEl) {
-                    statusEl.innerText = detectedNew > 0 ? `+${detectedNew} hits` : "OK";
+                    statusEl.innerText = detectedNew > 0 ? `+${detectedNew} today` : "OK";
                     statusEl.style.color = detectedNew > 0 ? "var(--accent-green)" : "var(--text-muted)";
                 }
 
@@ -528,36 +543,48 @@
             }
         }
 
-        // Retrieve sender domain & subject for matched emails
-        async function fetchMessageDetails(acc, messageId, accessToken) {
+        async function verifyAndRecordMessage(acc, messageId, accessToken, startOfToday) {
             try {
                 const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, {
                     headers: { Authorization: `Bearer ${accessToken}` }
                 });
-                if (!res.ok) return;
+                if (!res.ok) return false;
 
                 const details = await res.json();
-                const headers = details.payload?.headers || [];
                 
+                // 1. Must be currently present in INBOX
+                const labelIds = details.labelIds || [];
+                if (!labelIds.includes("INBOX")) {
+                    return false;
+                }
+
+                // 2. Double check internalDate is strictly today
+                const msgTime = parseInt(details.internalDate, 10);
+                if (msgTime < startOfToday) {
+                    return false;
+                }
+
+                const headers = details.payload?.headers || [];
                 const fromHeader = headers.find(h => h.name.toLowerCase() === "from")?.value || "Unknown";
                 const subjectHeader = headers.find(h => h.name.toLowerCase() === "subject")?.value || "(No Subject)";
                 
-                // Identify which target domain matched
                 const matchedDomain = DOMAINS.find(d => fromHeader.toLowerCase().includes(d.toLowerCase())) || "Target Domain";
+                const messageDate = new Date(msgTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
                 addFeedCard({
                     account: acc.name,
                     domain: matchedDomain,
-                    from: fromHeader,
                     subject: subjectHeader,
-                    date: new Date().toLocaleTimeString()
+                    date: messageDate
                 });
+
+                return true;
             } catch (err) {
-                console.error("Failed to parse message header", err);
+                console.error("Verification failed for message", messageId, err);
+                return false;
             }
         }
 
-        // Add real-time row to UI feed
         function addFeedCard({ account, domain, subject, date }) {
             const feedList = document.getElementById("feedList");
             const emptyFeed = document.getElementById("emptyFeed");
@@ -569,7 +596,7 @@
                 <div class="feed-domain">${domain}</div>
                 <div class="feed-account">📥 ${account}</div>
                 <div class="feed-subject" title="${subject}">${subject}</div>
-                <div class="feed-time">${date}</div>
+                <div class="feed-time">Today, ${date}</div>
             `;
             feedList.insertBefore(item, feedList.firstChild);
 
@@ -577,12 +604,14 @@
             document.getElementById("totalDetections").innerText = totalHits;
         }
 
-        // Core scanning cycle across all configured accounts
         async function runCycle() {
             if (isPolling) return;
             isPolling = true;
 
-            log(`Executing poll cycle across ${CONFIG.accounts.length} accounts...`);
+            const todayFormatted = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+            document.getElementById("currentDateLabel").innerText = todayFormatted;
+
+            log(`Checking Inbox messages received today (${todayFormatted}) across ${CONFIG.accounts.length} accounts...`);
             let newHitsFound = 0;
 
             const tasks = CONFIG.accounts.map(acc => checkAccount(acc));
@@ -597,10 +626,10 @@
             document.getElementById("lastPollTime").innerText = new Date().toLocaleTimeString();
 
             if (newHitsFound > 0) {
-                log(`🚨 ${newHitsFound} new matching email(s) found. Triggering voice alert: "Auth Inbox"`);
+                log(`🚨 ${newHitsFound} new Inbox email(s) found from today. Playing: "Auth Inbox"`);
                 speakAlert();
             } else {
-                log("Cycle finished. No new target domain emails.");
+                log("Cycle finished. No new matches in today's inbox.");
             }
 
             isPolling = false;
@@ -612,7 +641,6 @@
             runCycle();
         }
 
-        // 30-second interval countdown timer
         setInterval(() => {
             pollTimer--;
             if (pollTimer <= 0) {
@@ -622,7 +650,6 @@
             document.getElementById("countdown").innerText = pollTimer;
         }, 1000);
 
-        // Initialization
         window.addEventListener("DOMContentLoaded", () => {
             renderAccounts();
             runCycle();
