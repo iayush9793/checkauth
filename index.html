@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gmail Domain Live Monitor</title>
+    <style>
+        :root {
+            --bg-color: #0b0f19;
+            --card-bg: #151d30;
+            --border-color: #24304f;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --tag-opener: #1e3a8a;
+            --tag-nonopener: #4c1d95;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 24px;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 24px;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .pulse-indicator {
+            width: 10px;
+            height: 10px;
+            background-color: var(--accent-green);
+            border-radius: 50%;
+            box-shadow: 0 0 8px var(--accent-green);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn {
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            border-color: var(--accent-blue);
+            background-color: #1e293b;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-blue);
+            border-color: var(--accent-blue);
+        }
+
+        .btn-primary:hover {
+            background-color: #2563eb;
+        }
+
+        .timer-badge {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.05);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+        }
+
+        .card-title {
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 8px;
+        }
+
+        .card-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 24px;
+        }
+
+        @media (max-width: 900px) {
+            .layout-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .account-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 580px;
+            overflow-y: auto;
+        }
+
+        .account-card {
+            background: #111827;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .account-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .account-name {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .badge {
+            font-size: 0.65rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            font-weight: bold;
+            display: inline-block;
+            width: fit-content;
+        }
+
+        .badge-opener {
+            background-color: var(--tag-opener);
+            color: #93c5fd;
+        }
+
+        .badge-nonopener {
+            background-color: var(--tag-nonopener);
+            color: #d8b4fe;
+        }
+
+        .account-status {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .feed-container {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .feed-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 580px;
+            overflow-y: auto;
+        }
+
+        .feed-item {
+            background: #111827;
+            border-left: 4px solid var(--accent-green);
+            border-radius: 0 6px 6px 0;
+            padding: 12px 16px;
+            display: grid;
+            grid-template-columns: 120px 180px 1fr auto;
+            gap: 12px;
+            align-items: center;
+            border-top: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
+            border-bottom: 1px solid var(--border-color);
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .feed-domain {
+            font-weight: bold;
+            color: #60a5fa;
+            word-break: break-all;
+            font-size: 0.85rem;
+        }
+
+        .feed-account {
+            font-size: 0.8rem;
+            color: #cbd5e1;
+        }
+
+        .feed-subject {
+            font-size: 0.85rem;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .feed-time {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+        }
+
+        .empty-placeholder {
+            text-align: center;
+            color: var(--text-muted);
+            padding: 40px 0;
+            font-size: 0.9rem;
+        }
+
+        .console-logs {
+            margin-top: 24px;
+            background: #06090e;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            height: 120px;
+            overflow-y: auto;
+            color: #10b981;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>
+            <span class="pulse-indicator"></span>
+            Target Domain Monitor
+        </h1>
+        <div class="controls">
+            <span class="timer-badge">Next cycle in: <strong id="countdown">30</strong>s</span>
+            <button class="btn" id="voiceToggleBtn" onclick="toggleVoice()">🔊 Voice: Enabled</button>
+            <button class="btn btn-primary" onclick="triggerManualScan()">Scan Now</button>
+        </div>
+    </header>
+
+    <div class="metrics-grid">
+        <div class="card">
+            <div class="card-title">Monitored Accounts</div>
+            <div class="card-value" id="totalAccounts">11</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Target Domains</div>
+            <div class="card-value" id="totalDomains">17</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Hits Detected</div>
+            <div class="card-value" id="totalDetections" style="color: var(--accent-green);">0</div>
+        </div>
+        <div class="card">
+            <div class="card-title">Last Poll Timestamp</div>
+            <div class="card-value" id="lastPollTime" style="font-size: 1rem; margin-top: 6px;">Never</div>
+        </div>
+    </div>
+
+    <div class="layout-grid">
+        <!-- Accounts Panel -->
+        <div class="card">
+            <div class="card-title">Accounts Status</div>
+            <div class="account-list" id="accountList"></div>
+        </div>
+
+        <!-- Real-Time Hits Panel -->
+        <div class="card feed-container">
+            <div class="card-title">Inbound Detections Log</div>
+            <div class="feed-list" id="feedList">
+                <div class="empty-placeholder" id="emptyFeed">Listening for incoming emails matching the 17 domains...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Execution Logs -->
+    <div class="console-logs" id="consoleLogs">
+        [System] Gmail monitor ready. Initializing authentication loop...
+    </div>
+
+    <script>
+        const DOMAINS = [
+            "atomcoref.co.in",
+            "corefnode.co.in",
+            "datavloop.in",
+            "dlinkpack.com",
+            "fredkcmhelm.com",
+            "geekatmonhub.co.in",
+            "gridfport.com",
+            "netvtechflux.in",
+            "polyclick.in",
+            "trustbriefing.com",
+            "boldleadh.in",
+            "booststepup.wiki",
+            "fineetricsea.wiki",
+            "quadviralhr.co.in",
+            "raftsmarthr.co.in",
+            "smarthrmesh.co.in",
+            "unitviralhr.in"
+        ];
+
+        const CONFIG = {
+            defaultClientId: "128820302240-k7bk8mui4lr16gvonbqb7qn76o9rgd1q.apps.googleusercontent.com",
+            defaultClientSecret: "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",
+            accounts: [
+                { name: "muskansharma90", type: "Opener", token: "1//0gPq37jtx0_0KCgYIARAAGBASNwF-L9IreaaDx20paQujuIoTUk67NYt2pD9caOBJvffab3il9PtvL4GEYKYOFdffiWpxLTh6oeU" },
+                { name: "agkartikag90", type: "Opener", token: "1//0g1w2jQ29C6fkCgYIARAAGBASNwF-L9Ir1mkqwDP8wVSBC5KaKgh12Z2Myzv46aE2vPX0kJkxrOEo7t_NxyhEXSbp7RQBMsF0a9U" },
+                { name: "kartikag8429", type: "Opener", token: "1//0g0j86Rcxi3QrCgYIARAAGBASNwF-L9Ir-y6PjI7Qr4d5iBkYbc-Tx_ZBQqBUGvnNS0O35qva682RqRzrEP0oQ93rpofm2PzFS6k" },
+                { name: "ashwinliveseedforall", type: "Opener", token: "1//0gub_tDUPkLESCgYIARAAGBASNwF-L9IrVdFJ0uMmaXYM4AG01a6r7Zpo3uDchB7DNXW0Rkt4oDojH3-9HCrZX5tr8uDFmABRRY0" },
+                { name: "asharyaliveseedacc", type: "Opener", token: "1//0guqANvb_X5K3CgYIARAAGBASNwF-L9IrqODXDbSdAtPz7GznJrXl0HXkUbcKQ9yqWwda563DfGtAbc8MlFkDZuja-SzHMG7WkXk" },
+                { name: "liveseedsformm", type: "Opener", token: "1//0gj4AZbhLjWK0CgYIARAAGBASNwF-L9IrKfhgpAfv-20pn5NC72ByHJS-b17sGCNrkV3vTDkiVGV98aGbwn32IKXhx97d0X-KHeg" },
+                { name: "arcsann6767", type: "Opener", token: "1//0gbQkQjqB6dmFCgYIARAAGBASNwF-L9IroUxKSF0oSj2t_9L9l7Bk7inNEepzhDA-DLrpVngouFHoyGl__nEp3OD-2SlbxAofEdM" },
+                { name: "ashwinaryaopnon", type: "Non-Opener", token: "1//0gVEsWZHhysDiCgYIARAAGBASNwF-L9Ir1VA8Wq2OqrP4NB6DBnNAM64bLqlW05jn1p9BXNcgLg6On-w_wa8AS4nVi3P6kaWAYMI" },
+                { 
+                    name: "ashwinaryanonopn", 
+                    type: "Non-Opener", 
+                    token: "1//0g6qv3E3pprRyCgYIARAAGBASNwF-L9Ir2_X7lmQnuoPgkTHwSKCYGk3Lvy-rKCUXmBhOQL2uG6B-YojzqSmFiCVyJp0vNBfoq6c",
+                    clientId: "707901165841-938emg3s0i65g4j1nebqqf33kr65rblp.apps.googleusercontent.com",
+                    clientSecret: "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"
+                },
+                { 
+                    name: "srishtiguptanonopn", 
+                    type: "Non-Opener", 
+                    token: "1//0gdCrQXZ-tmTzCgYIARAAGBASNwF-L9IrmKKbCwiAU8vG35SLADOkfWhETCWh8-DHMClfbqi4IK2Dhdn4PmQjilEMkVFGp4BhhmQ",
+                    clientId: "993990204222-qcknpbirqoh9mp2951qfvm4vv7imk087.apps.googleusercontent.com",
+                    clientSecret: "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"
+                },
+                { 
+                    name: "jasminesandallasnonopn", 
+                    type: "Non-Opener", 
+                    token: "1//0g3RUyiAnX0D3CgYIARAAGBASNwF-L9IrCRsYIPSvriO0VRRf7k6nU5ZlaxxjNcbEnGpdYMB07Y_uzjEAQAJDU8WnxkSf8o_DHRI",
+                    clientId: "993990204222-qcknpbirqoh9mp2951qfvm4vv7imk087.apps.googleusercontent.com",
+                    clientSecret: "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"
+                }
+            ]
+        };
+
+        // Cache tokens to avoid re-requesting access tokens repeatedly
+        const tokenCache = {};
+        const knownMessageIds = new Set();
+        let totalHits = 0;
+        let voiceEnabled = true;
+        let pollTimer = 30;
+        let isPolling = false;
+
+        // Build the optimized Gmail search query
+        // "from:(atomcoref.co.in OR corefnode.co.in ...)"
+        const gmailQuery = `from:(${DOMAINS.join(" OR ")})`;
+
+        function log(message) {
+            const logs = document.getElementById("consoleLogs");
+            const time = new Date().toLocaleTimeString();
+            logs.innerHTML += `<div>[${time}] ${message}</div>`;
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        function toggleVoice() {
+            voiceEnabled = !voiceEnabled;
+            const btn = document.getElementById("voiceToggleBtn");
+            btn.innerText = voiceEnabled ? "🔊 Voice: Enabled" : "🔇 Voice: Muted";
+        }
+
+        // Web Speech API Voice synthesis
+        function speakAlert() {
+            if (!voiceEnabled || !('speechSynthesis' in window)) return;
+            window.speechSynthesis.cancel(); // Stop pending utterances
+            const utterance = new SpeechSynthesisUtterance("Auth Inbox");
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+            window.speechSynthesis.speak(utterance);
+        }
+
+        // Render Account list
+        function renderAccounts() {
+            const list = document.getElementById("accountList");
+            list.innerHTML = "";
+            CONFIG.accounts.forEach(acc => {
+                const item = document.createElement("div");
+                item.className = "account-card";
+                item.id = `card-${acc.name}`;
+                item.innerHTML = `
+                    <div class="account-info">
+                        <span class="account-name">${acc.name}</span>
+                        <span class="badge ${acc.type === 'Opener' ? 'badge-opener' : 'badge-nonopener'}">${acc.type}</span>
+                    </div>
+                    <div class="account-status" id="status-${acc.name}">Idle</div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        // Get an access token using OAuth refresh token grant
+        async function getAccessToken(acc) {
+            const cId = acc.clientId || CONFIG.defaultClientId;
+            const cSec = acc.clientSecret || CONFIG.defaultClientSecret;
+
+            // Use cached active token if valid for at least another 60 seconds
+            if (tokenCache[acc.name] && tokenCache[acc.name].expiresAt > Date.now() + 60000) {
+                return tokenCache[acc.name].accessToken;
+            }
+
+            const response = await fetch("https://oauth2.googleapis.com/token", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: new URLSearchParams({
+                    client_id: cId,
+                    client_secret: cSec,
+                    refresh_token: acc.token,
+                    grant_type: "refresh_token"
+                })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error_description || "Token Refresh Failed");
+            }
+
+            const data = await response.json();
+            tokenCache[acc.name] = {
+                accessToken: data.access_token,
+                expiresAt: Date.now() + (data.expires_in * 1000)
+            };
+            return data.access_token;
+        }
+
+        // Check single Gmail account
+        async function checkAccount(acc) {
+            const statusEl = document.getElementById(`status-${acc.name}`);
+            if (statusEl) statusEl.innerText = "Checking...";
+
+            try {
+                const accessToken = await getAccessToken(acc);
+                const listUrl = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(gmailQuery)}&maxResults=5`;
+                
+                const response = await fetch(listUrl, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Gmail API error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                const messages = data.messages || [];
+                let detectedNew = 0;
+
+                for (const msg of messages) {
+                    if (!knownMessageIds.has(msg.id)) {
+                        knownMessageIds.add(msg.id);
+                        detectedNew++;
+                        await fetchMessageDetails(acc, msg.id, accessToken);
+                    }
+                }
+
+                if (statusEl) {
+                    statusEl.innerText = detectedNew > 0 ? `+${detectedNew} hits` : "OK";
+                    statusEl.style.color = detectedNew > 0 ? "var(--accent-green)" : "var(--text-muted)";
+                }
+
+                return detectedNew;
+            } catch (err) {
+                log(`Error [${acc.name}]: ${err.message}`);
+                if (statusEl) {
+                    statusEl.innerText = "Error";
+                    statusEl.style.color = "var(--accent-red)";
+                }
+                return 0;
+            }
+        }
+
+        // Retrieve sender domain & subject for matched emails
+        async function fetchMessageDetails(acc, messageId, accessToken) {
+            try {
+                const res = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+                if (!res.ok) return;
+
+                const details = await res.json();
+                const headers = details.payload?.headers || [];
+                
+                const fromHeader = headers.find(h => h.name.toLowerCase() === "from")?.value || "Unknown";
+                const subjectHeader = headers.find(h => h.name.toLowerCase() === "subject")?.value || "(No Subject)";
+                
+                // Identify which target domain matched
+                const matchedDomain = DOMAINS.find(d => fromHeader.toLowerCase().includes(d.toLowerCase())) || "Target Domain";
+
+                addFeedCard({
+                    account: acc.name,
+                    domain: matchedDomain,
+                    from: fromHeader,
+                    subject: subjectHeader,
+                    date: new Date().toLocaleTimeString()
+                });
+            } catch (err) {
+                console.error("Failed to parse message header", err);
+            }
+        }
+
+        // Add real-time row to UI feed
+        function addFeedCard({ account, domain, subject, date }) {
+            const feedList = document.getElementById("feedList");
+            const emptyFeed = document.getElementById("emptyFeed");
+            if (emptyFeed) emptyFeed.remove();
+
+            const item = document.createElement("div");
+            item.className = "feed-item";
+            item.innerHTML = `
+                <div class="feed-domain">${domain}</div>
+                <div class="feed-account">📥 ${account}</div>
+                <div class="feed-subject" title="${subject}">${subject}</div>
+                <div class="feed-time">${date}</div>
+            `;
+            feedList.insertBefore(item, feedList.firstChild);
+
+            totalHits++;
+            document.getElementById("totalDetections").innerText = totalHits;
+        }
+
+        // Core scanning cycle across all configured accounts
+        async function runCycle() {
+            if (isPolling) return;
+            isPolling = true;
+
+            log(`Executing poll cycle across ${CONFIG.accounts.length} accounts...`);
+            let newHitsFound = 0;
+
+            const tasks = CONFIG.accounts.map(acc => checkAccount(acc));
+            const results = await Promise.allSettled(tasks);
+
+            results.forEach(res => {
+                if (res.status === "fulfilled") {
+                    newHitsFound += res.value;
+                }
+            });
+
+            document.getElementById("lastPollTime").innerText = new Date().toLocaleTimeString();
+
+            if (newHitsFound > 0) {
+                log(`🚨 ${newHitsFound} new matching email(s) found. Triggering voice alert: "Auth Inbox"`);
+                speakAlert();
+            } else {
+                log("Cycle finished. No new target domain emails.");
+            }
+
+            isPolling = false;
+        }
+
+        function triggerManualScan() {
+            pollTimer = 30;
+            document.getElementById("countdown").innerText = pollTimer;
+            runCycle();
+        }
+
+        // 30-second interval countdown timer
+        setInterval(() => {
+            pollTimer--;
+            if (pollTimer <= 0) {
+                pollTimer = 30;
+                runCycle();
+            }
+            document.getElementById("countdown").innerText = pollTimer;
+        }, 1000);
+
+        // Initialization
+        window.addEventListener("DOMContentLoaded", () => {
+            renderAccounts();
+            runCycle();
+        });
+    </script>
+</body>
+</html>
